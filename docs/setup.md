@@ -27,8 +27,9 @@ source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-> [requirements.txt](../requirements.txt) is UTF-16 encoded. If pip reports an encoding error,
-> install from the project metadata instead with `pip install .`, or re-save the file as UTF-8.
+[requirements.txt](../requirements.txt) is a flat freeze of the whole environment;
+[pyproject.toml](../pyproject.toml) plus [uv.lock](../uv.lock) is the authoritative dependency
+set.
 
 ### Configure
 
@@ -153,6 +154,11 @@ Start the pipeline in **continuous** mode for live streaming, or **triggered** m
 whatever has accumulated and stop. On the first run `startingOffsets` is `earliest`, so the
 pipeline reads the full retained history of the hub.
 
+Let the historical seed finish flowing through to `silver_obt` **before** starting the live
+producer. `silver_obt` watermarks on `booking_timestamp`, and the seed spans about 30 days; if
+live events advance the watermark while the seed is still being consumed, older seed rows can
+fall behind it and be dropped from the join. See [known-issues.md](known-issues.md).
+
 ## Verification
 
 After the pipeline settles, check each layer:
@@ -175,9 +181,8 @@ LEFT JOIN uber.bronze.dim_location AS dim
 
 | Symptom | Likely cause |
 | --- | --- |
-| `Error sending data to Event Hub` printed, page still shows confirmation | `CONNECTION_STRING` or `EVENT_HUBNAME` missing or wrong. `/book` does not surface send failures — see [known-issues.md](known-issues.md) |
+| Browser shows **Booking Failed** with HTTP 502 | The event did not reach the Event Hub. Check the server log — a missing `CONNECTION_STRING` or `EVENT_HUBNAME` is reported explicitly |
 | Kafka connector times out in Databricks | Namespace is Basic tier, port 9093 is blocked, or `connection_string` is not set in the pipeline config |
 | `rides_raw` fills but `stg_rides` stays empty | Event JSON does not match `rides_schema`; `from_json` yields nulls on mismatch rather than failing |
-| `silver_obt` fails on `map_cities.updated_at` | The mapping data lacks an `updated_at` column — see [known-issues.md](known-issues.md) |
+| Seed rides missing from `silver_obt` | The watermark advanced past them; load the seed before starting the live producer |
 | Pipeline restarts reprocess everything | Checkpoint state was reset; a full refresh re-reads from `earliest` |
-| Encoding error installing `requirements.txt` | The file is UTF-16; use `pip install .` instead |

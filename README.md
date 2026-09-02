@@ -48,7 +48,7 @@ FastAPI web app  ──▶  Azure Event Hub  ──▶  Databricks (bronze → s
 | [docs/web-app.md](docs/web-app.md) | The producer application and its endpoints |
 | [docs/data-model.md](docs/data-model.md) | Event schema, mapping tables, and the gold star schema |
 | [docs/pipeline.md](docs/pipeline.md) | The Databricks pipeline, flow by flow |
-| [docs/known-issues.md](docs/known-issues.md) | Known gaps and rough edges to be aware of |
+| [docs/known-issues.md](docs/known-issues.md) | Remaining limitations and operational caveats |
 
 ## Quick start
 

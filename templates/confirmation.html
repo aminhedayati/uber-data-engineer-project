@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ride Booking Home</title>
+    <title>{% if sent %}Ride Confirmed{% else %}Booking Failed{% endif %}</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -22,15 +22,39 @@
         h1 {
             color: #333;
         }
+        h1.error {
+            color: #b00020;
+        }
         p {
             color: #666;
+        }
+        .reference {
+            color: #333;
+            font-family: monospace;
+        }
+        .link {
+            display: inline-block;
+            margin-top: 15px;
+            color: #007BFF;
+            text-decoration: none;
+        }
+        .link:hover {
+            text-decoration: underline;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Ride Confirmed</h1>
-        <p>Your ride has been successfully booked. Thank you for choosing our service!</p>
+        {% if sent %}
+            <h1>Ride Confirmed</h1>
+            <p>Your ride has been successfully booked. Thank you for choosing our service!</p>
+            <p>Confirmation number: <span class="reference">{{ confirmation_number }}</span></p>
+        {% else %}
+            <h1 class="error">Booking Failed</h1>
+            <p>We could not confirm your ride because the booking could not be recorded. No ride has been booked.</p>
+            <p>Please try again in a moment.</p>
+        {% endif %}
+        <a href="/" class="link">Back to home</a>
     </div>
 </body>
 </html>

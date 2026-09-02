@@ -83,14 +83,20 @@ This is the key pattern of the silver layer: one target, several independent sou
 its own checkpoint. Backfill and real-time ingestion land in the same table without a union or a
 separate merge job, and either flow can be added or replayed without disturbing the other.
 
-- **`rides_bulk`** streams from `bulk_rides` and casts `booking_timestamp` to a timestamp, since
-  the JSON seed carries it as a string.
+- **`rides_bulk`** streams from `bulk_rides` and casts `booking_timestamp`, `pickup_timestamp`,
+  and `dropoff_timestamp` to timestamps, since the JSON seed carries them as strings. Both flows
+  write to the same target, so their schemas have to agree.
 - **`rides_stream`** streams from `rides_raw` and parses the string payload against
   `rides_schema` with `from_json`, then flattens with `select("parsed_rides.*")`.
 
 `rides_schema` is an explicit 43-field `StructType`. Declaring it rather than inferring it keeps
-the streaming schema stable across restarts. Note that `from_json` returns nulls for a payload
-that does not match — a producer/schema mismatch shows up as empty columns rather than an error.
+the streaming schema stable across restarts. All three timestamp columns are typed as
+`TimestampType`, so none of them needs a downstream cast. Note that `from_json` returns nulls for
+a payload that does not match — a producer/schema mismatch shows up as empty columns rather than
+an error.
+
+The same schema is duplicated in [silver_obt.ipynb](../Code_Files/silver_obt.ipynb) for
+interactive work; the two must be kept in step.
 
 ## Silver — the one-big-table
 
@@ -154,8 +160,9 @@ and de-duplicates, an empty streaming target, and a CDC flow that maintains it.
 ```python
 @dp.view
 def dim_passenger_view():
-    df = spark.readStream.table("silver_obt")
-    df = df.select("passenger_id", "passenger_name", "passenger_email", "passenger_phone")
+    df = spark.readStream.table("uber.bronze.silver_obt")
+    df = df.select("passenger_id", "passenger_name", "passenger_email",
+                   "passenger_phone", "booking_timestamp")
     return df.dropDuplicates(subset=['passenger_id'])
 
 dp.create_streaming_table("dim_passenger")
@@ -163,7 +170,7 @@ dp.create_auto_cdc_flow(
   target = "dim_passenger",
   source = "dim_passenger_view",
   keys = ["passenger_id"],
-  sequence_by = "passenger_id",
+  sequence_by = "booking_timestamp",
   stored_as_scd_type = 1,
 )
 ```
@@ -175,9 +182,9 @@ history (2).
 ### SCD Type 1 dimensions
 
 `dim_passenger`, `dim_driver`, `dim_vehicle`, `dim_payment`, and `dim_booking` all use type 1 —
-the latest record wins and no history is kept. Each sequences by its own key, which makes
-ordering effectively arbitrary; that is acceptable only because these attributes are not expected
-to change for a given key.
+the latest record wins and no history is kept. Each carries `booking_timestamp` and sequences by
+it, so when two records share a key the one from the later ride wins. Sequencing by the key itself
+would give no ordering at all.
 
 ### SCD Type 2 — `dim_location`
 
@@ -191,9 +198,11 @@ distinct version survives to be sequenced, rather than collapsing to one row per
 
 ### `fact`
 
-Projects the measures and the vehicle-type rate columns, and applies a composite key of
-`ride_id, pickup_city_id, payment_method_id, driver_id, passenger_id, vehicle_id`. Unlike the
-dimension views it does not de-duplicate, relying on the CDC flow's key handling instead.
+Projects the measures, the vehicle-type rate columns, and `booking_timestamp`, and applies a
+composite key of
+`ride_id, pickup_city_id, payment_method_id, driver_id, passenger_id, vehicle_id`, sequenced by
+`booking_timestamp`. Unlike the dimension views it does not de-duplicate, relying on the CDC
+flow's key handling instead.
 
 ## Extending the pipeline
 
@@ -205,5 +214,6 @@ dimension views it does not de-duplicate, relying on the CDC flow's key handling
 [model.py](../Code_Files/model.py), pointing at columns that already exist in `silver_obt`.
 
 **Adding a field to the event:** add it in [data.py](../data.py), add it to `rides_schema` in
-[silver.py](../Code_Files/silver.py), and add it to the `stg_rides` select in the `jinja_config`.
-All three must agree or `from_json` will drop it.
+both [silver.py](../Code_Files/silver.py) and
+[silver_obt.ipynb](../Code_Files/silver_obt.ipynb), and add it to the `stg_rides` select in the
+`jinja_config`. They must agree or `from_json` will drop it.

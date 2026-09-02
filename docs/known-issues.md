@@ -1,131 +1,97 @@
-# Known Issues and Rough Edges
+# Known Issues and Limitations
 
-Observations from reading the code as it currently stands. Nothing here blocks the local producer
-from running; several items do matter before the gold layer works end to end.
+What remains after the current round of fixes. Everything here is either a deliberate simulation
+trade-off or a caveat to be aware of when operating the platform — none of it blocks a run.
 
-## Blocking
+## Simulation fidelity
 
-### `map_cities` has no `updated_at` column
+### Street addresses do not match the attributed city
 
-[silver_obt.sql](../Code_Files/silver_obt.sql) selects `map_cities.updated_at as city_updated_at`,
-and `dim_location` in [model.py](../Code_Files/model.py) uses that column as its SCD Type 2
-`sequence_by`. The committed [Data/map_cities.json](../Data/map_cities.json) has only `city_id`,
-`city`, `state`, and `region`.
+Coordinates are generated within roughly 15 km of the centre of the city named by
+`pickup_city_id` / `dropoff_city_id`, but `pickup_address` and `dropoff_address` are still
+free-standing Faker addresses with unrelated street names, cities, and ZIP codes. The coordinates
+are trustworthy; the address strings are decorative.
 
-As shipped, the OBT will fail to resolve the column. Add an `updated_at` timestamp to each city
-record before loading the mapping table.
+### The event carries outcome fields at booking time
 
-## Correctness
+`booking_timestamp` is the moment the event fires, which is what makes the silver watermark
+meaningful. The record still carries `tip_amount`, `rating`, and a `dropoff_timestamp` that lies
+in the future — values a real booking confirmation would not yet know. Treat them as the
+simulated eventual outcome of the ride rather than as facts known at booking.
 
-### Ride status and cancellation reason are drawn independently
+Cancelled rides are internally consistent (no tip, no rating) but still carry the fare and the
+scheduled pickup and dropoff times.
 
-In [data.py](../data.py), `cancellation_reason_id` is set from a 10% `is_cancelled` roll while
-`ride_status` is drawn separately from `['Completed', 'Completed', 'Cancelled']`. The two never
-consult each other, so events can be `Completed` with a real cancellation reason, or `Cancelled`
-with reason id `4` (meaning "not cancelled"). Any analysis joining status to cancellation reason
-will see contradictions.
+### `vehicle_model` is a random word
 
-### Fares ignore the vehicle type's rate card
+`fake.word().capitalize()` produces models like "Provide" or "Consider". The value is stable per
+vehicle now that vehicles come from a fixed pool, but it is not a real model name and does not
+correspond to `vehicle_make`.
 
-`generate_uber_ride_confirmation()` computes every fare from flat constants (`base_fare = 2.50`,
-`per_mile_rate = 1.75`, `per_minute_rate = 0.35`) regardless of the `vehicle_type_id` it assigns.
-`map_vehicle_types` carries a distinct rate card per type, and `fact` surfaces both, so
-`base_fare` will frequently disagree with `base_rate` for the same row.
+### The historical seed still invents one entity per ride
 
-### Coordinates are unrelated to the city
+The live producer draws from fixed pools of 500 passengers, 150 drivers, and 150 vehicles, so
+entities recur. [Data/bulk_rides.json](../Data/bulk_rides.json) predates that change and contains
+2,000 rides with 2,000 distinct passengers, drivers, and vehicles. The dimensions will therefore
+carry a long tail of single-ride entities from the historical load. Regenerating the seed from the
+current generator would resolve it.
 
-Latitudes and longitudes are drawn uniformly over the entire globe while `pickup_city_id` names a
-US city. Any geospatial use of these columns is meaningless.
+### `dropoff_city_id` has no dimension
 
-### Every ride invents new entities
+The OBT joins `map_cities` on `pickup_city_id` only, so `dim_location` describes pickup cities.
+`dropoff_city_id` is carried through as a bare id with no city, state, or region attached.
 
-`passenger_id`, `driver_id`, and `vehicle_id` are fresh UUID4s per event, so no passenger or
-driver ever recurs. The dimensions grow at roughly the rate of the fact table and the SCD Type 1
-overwrite logic is never actually exercised.
+## Streaming behaviour
 
-### Send failures are invisible to the user
+### The seed's timestamps interact with the watermark
 
-[api.py](../api.py) assigns `result = send_to_event_hub(ride)` and then ignores it. When the send
-fails, `send_to_event_hub` prints to the server console and returns `False`, but `/book` still
-renders the confirmation page. The user is told the ride was booked when nothing was published.
+`silver_obt` watermarks on `booking_timestamp` with a three-minute delay, and the bulk seed spans
+roughly 30 days. Within the first micro-batch the watermark has not yet advanced, so the seed
+passes through; but if live events advance the watermark before the seed is fully consumed, older
+seed rows can fall behind it and be dropped from the join.
 
-## Consistency
+Load the seed and let it settle **before** starting the live producer. Regenerating the seed with
+a narrower time range, or widening the watermark delay for the initial load, are the two ways to
+remove the hazard entirely.
 
-### `files_array.json` does not match the actual files
+### De-duplication state is unbounded
 
-[files_array.json](../files_array.json) at the repository root lists `map_rides` and `map_types`,
-neither of which exists in [Data/](../Data): the real mapping file is `map_vehicle_types`, and
-there is no `map_rides` file at all. The authoritative list is the inline `files` list in
-[bronze_adls.ipynb](../Code_Files/bronze_adls.ipynb), which names all six correctly. Nothing in
-the codebase reads the root file.
+The gold views call `dropDuplicates` on streaming DataFrames without a watermark, so Spark keeps
+the set of seen keys indefinitely. State grows with the number of distinct entities. The fixed
+producer pools bound this for live data; the historical seed still contributes 2,000 keys per
+entity type.
 
-### `dim_passenger_view` reads an unqualified table name
+### `failOnDataLoss` is `true`
 
-Every other view in [model.py](../Code_Files/model.py) reads `uber.bronze.silver_obt`;
-`dim_passenger_view` reads bare `silver_obt`. It resolves correctly only when the pipeline's
-default catalog and schema are set as expected.
+If events age out of Event Hub retention before the pipeline reads them, ingestion fails rather
+than silently skipping. That is the safe default, but a pipeline left stopped past the retention
+window will not restart cleanly without intervention.
 
-### `dim_location_view` is decorated `@dp.table`
+## Maintenance
 
-All sibling views use `@dp.view`. Declaring it as a table materialises an extra intermediate
-dataset that nothing else reads.
+### Reference data is defined in two places
 
-### `fact_view` reads its source twice
+The mappings in [data.py](../data.py) (`CITY_MAPPING`, `VEHICLE_TYPE_MAPPING`, and the rest)
+mirror the JSON files in [Data/](../Data) that are loaded into the bronze layer. The producer
+needs them to emit valid foreign keys; the pipeline needs the JSON to resolve those keys into
+attributes. **Changing one side requires changing the other.**
 
-```python
-df = spark.readStream.table("uber.bronze.silver_obt")
-df = spark.readStream.table("uber.bronze.silver_obt")
-```
+They are not byte-identical by design: [Data/map_cities.json](../Data/map_cities.json) carries an
+`updated_at` column that drives SCD Type 2 history on `dim_location`, and `data.py` carries
+`CITY_COORDINATES`, which the mapping table does not need. The analytic columns — ids, names,
+states, regions — must stay in step.
 
-The first assignment is immediately overwritten — harmless, but the duplicate line should go.
+### `updated_at` is uniform in the seed
 
-### SCD Type 1 dimensions sequence by their own key
+Every city in [Data/map_cities.json](../Data/map_cities.json) has the same `updated_at` of
+`2024-01-01T00:00:00`, so `dim_location` builds exactly one version per city. The SCD Type 2
+machinery is wired correctly but will not produce a second version until a city's row is changed
+and its `updated_at` advanced.
 
-`sequence_by = "passenger_id"` on a flow keyed by `passenger_id` provides no meaningful ordering
-between competing versions of the same row. An event timestamp such as `booking_timestamp` would
-order them properly if these attributes ever did change.
+### Credentials come from two different places
 
-### Timestamp typing is mixed
-
-In `rides_schema`, `booking_timestamp` is a `TimestampType` while `pickup_timestamp` and
-`dropoff_timestamp` are `StringType`. Only the first is usable for time-based operations without
-a cast — which is why it is the watermark column.
-
-### `Los Angelas` is misspelled
-
-[Data/map_cities.json](../Data/map_cities.json) spells city 2 `Los Angelas`;
-[data.py](../data.py) spells it `Los Angeles`. Only the id crosses the wire so no join breaks,
-but the mapping table is what surfaces in reports.
-
-## Packaging and tooling
-
-### `requirements.txt` is UTF-16 encoded
-
-[requirements.txt](../requirements.txt) was written by a PowerShell redirect and is UTF-16 with a
-BOM. Some pip versions fail to parse it. Prefer `uv sync`, or `pip install .` to use the
-dependency list in [pyproject.toml](../pyproject.toml).
-
-### `pyproject.toml` metadata is a placeholder
-
-The project is named `event-tutorial` with the default description "Add your description here".
-
-### Dependency lists disagree
-
-[requirements.txt](../requirements.txt) includes packages absent from
-[pyproject.toml](../pyproject.toml) (`httpx`, `email-validator`, `fastapi-cli`, `dnspython` and
-others). `pyproject.toml` plus [uv.lock](../uv.lock) is the more reliable of the two.
-
-### Unused imports
-
-[connection.py](../connection.py) imports `random`, `uuid`, `datetime`, `timedelta`, `Faker`, and
-`logging` without using any of them. [data.py](../data.py) imports the Event Hub SDK, `logging`,
-and `load_dotenv` but performs no I/O.
-
-### `Code_Files/readme.md` is empty
-
-The file contains nothing but two blank lines.
-
-## Operational notes
+The producer reads `CONNECTION_STRING` from `.env`; the pipeline reads `connection_string` from
+Spark configuration. Both must be maintained, and neither belongs in source control.
 
 ### The bulk load must not be re-run
 
@@ -133,13 +99,8 @@ The guard in [bronze_adls.ipynb](../Code_Files/bronze_adls.ipynb) exists because
 streams from `bulk_rides`. Dropping and reloading that table re-emits all 2,000 seed rides into
 silver.
 
-### `failOnDataLoss` is `true`
+### Notebook outputs are committed
 
-If events age out of Event Hub retention before the pipeline reads them, ingestion fails rather
-than skipping. That is the safe default, but a pipeline left stopped past the retention window
-will not restart cleanly without intervention.
-
-### Credentials come from two different places
-
-The producer reads `CONNECTION_STRING` from `.env`; the pipeline reads `connection_string` from
-Spark configuration. Both must be maintained, and neither belongs in source control.
+[silver_obt.ipynb](../Code_Files/silver_obt.ipynb) carries its execution output, which is the bulk
+of the file's size and makes its diffs noisy. Clearing outputs before committing would keep the
+history readable.

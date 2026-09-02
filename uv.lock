@@ -185,69 +185,6 @@ wheels = [
 ]
 
 [[package]]
-name = "event-tutorial"
-version = "0.1.0"
-source = { virtual = "." }
-dependencies = [
-    { name = "annotated-doc" },
-    { name = "annotated-types" },
-    { name = "anyio" },
-    { name = "azure-core" },
-    { name = "azure-eventhub" },
-    { name = "certifi" },
-    { name = "charset-normalizer" },
-    { name = "click" },
-    { name = "colorama" },
-    { name = "dotenv" },
-    { name = "faker" },
-    { name = "fastapi", extra = ["standard"] },
-    { name = "h11" },
-    { name = "idna" },
-    { name = "jinja2" },
-    { name = "markupsafe" },
-    { name = "pydantic" },
-    { name = "pydantic-core" },
-    { name = "python-dotenv" },
-    { name = "requests" },
-    { name = "starlette" },
-    { name = "typing-extensions" },
-    { name = "typing-inspection" },
-    { name = "tzdata" },
-    { name = "urllib3" },
-    { name = "uvicorn" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "annotated-doc", specifier = "==0.0.4" },
-    { name = "annotated-types", specifier = "==0.7.0" },
-    { name = "anyio", specifier = "==4.12.1" },
-    { name = "azure-core", specifier = "==1.38.2" },
-    { name = "azure-eventhub", specifier = "==5.15.1" },
-    { name = "certifi", specifier = "==2026.2.25" },
-    { name = "charset-normalizer", specifier = "==3.4.4" },
-    { name = "click", specifier = "==8.3.1" },
-    { name = "colorama", specifier = "==0.4.6" },
-    { name = "dotenv", specifier = "==0.9.9" },
-    { name = "faker", specifier = "==40.5.1" },
-    { name = "fastapi", extras = ["standard"], specifier = "==0.133.1" },
-    { name = "h11", specifier = "==0.16.0" },
-    { name = "idna", specifier = "==3.11" },
-    { name = "jinja2", specifier = "==3.1.6" },
-    { name = "markupsafe", specifier = "==3.0.3" },
-    { name = "pydantic", specifier = "==2.12.5" },
-    { name = "pydantic-core", specifier = "==2.41.5" },
-    { name = "python-dotenv", specifier = "==1.2.1" },
-    { name = "requests", specifier = "==2.32.5" },
-    { name = "starlette", specifier = "==0.52.1" },
-    { name = "typing-extensions", specifier = "==4.15.0" },
-    { name = "typing-inspection", specifier = "==0.4.2" },
-    { name = "tzdata", specifier = "==2025.3" },
-    { name = "urllib3", specifier = "==2.6.3" },
-    { name = "uvicorn", specifier = "==0.41.0" },
-]
-
-[[package]]
 name = "faker"
 version = "40.5.1"
 source = { registry = "https://pypi.org/simple" }
@@ -944,6 +881,69 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/5e/a7/c202b344c5ca7daf398f3b8a477eeb205cf3b6f32e7ec3a6bac0629ca975/tzdata-2025.3.tar.gz", hash = "sha256:de39c2ca5dc7b0344f2eba86f49d614019d29f060fc4ebc8a417896a620b56a7", size = 196772, upload-time = "2025-12-13T17:45:35.667Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c7/b0/003792df09decd6849a5e39c28b513c06e84436a54440380862b5aeff25d/tzdata-2025.3-py2.py3-none-any.whl", hash = "sha256:06a47e5700f3081aab02b2e513160914ff0694bce9947d6b76ebd6bf57cfc5d1", size = 348521, upload-time = "2025-12-13T17:45:33.889Z" },
+]
+
+[[package]]
+name = "uber-realtime-data-engineering"
+version = "0.1.0"
+source = { virtual = "." }
+dependencies = [
+    { name = "annotated-doc" },
+    { name = "annotated-types" },
+    { name = "anyio" },
+    { name = "azure-core" },
+    { name = "azure-eventhub" },
+    { name = "certifi" },
+    { name = "charset-normalizer" },
+    { name = "click" },
+    { name = "colorama" },
+    { name = "dotenv" },
+    { name = "faker" },
+    { name = "fastapi", extra = ["standard"] },
+    { name = "h11" },
+    { name = "idna" },
+    { name = "jinja2" },
+    { name = "markupsafe" },
+    { name = "pydantic" },
+    { name = "pydantic-core" },
+    { name = "python-dotenv" },
+    { name = "requests" },
+    { name = "starlette" },
+    { name = "typing-extensions" },
+    { name = "typing-inspection" },
+    { name = "tzdata" },
+    { name = "urllib3" },
+    { name = "uvicorn" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "annotated-doc", specifier = "==0.0.4" },
+    { name = "annotated-types", specifier = "==0.7.0" },
+    { name = "anyio", specifier = "==4.12.1" },
+    { name = "azure-core", specifier = "==1.38.2" },
+    { name = "azure-eventhub", specifier = "==5.15.1" },
+    { name = "certifi", specifier = "==2026.2.25" },
+    { name = "charset-normalizer", specifier = "==3.4.4" },
+    { name = "click", specifier = "==8.3.1" },
+    { name = "colorama", specifier = "==0.4.6" },
+    { name = "dotenv", specifier = "==0.9.9" },
+    { name = "faker", specifier = "==40.5.1" },
+    { name = "fastapi", extras = ["standard"], specifier = "==0.133.1" },
+    { name = "h11", specifier = "==0.16.0" },
+    { name = "idna", specifier = "==3.11" },
+    { name = "jinja2", specifier = "==3.1.6" },
+    { name = "markupsafe", specifier = "==3.0.3" },
+    { name = "pydantic", specifier = "==2.12.5" },
+    { name = "pydantic-core", specifier = "==2.41.5" },
+    { name = "python-dotenv", specifier = "==1.2.1" },
+    { name = "requests", specifier = "==2.32.5" },
+    { name = "starlette", specifier = "==0.52.1" },
+    { name = "typing-extensions", specifier = "==4.15.0" },
+    { name = "typing-inspection", specifier = "==0.4.2" },
+    { name = "tzdata", specifier = "==2025.3" },
+    { name = "urllib3", specifier = "==2.6.3" },
+    { name = "uvicorn", specifier = "==0.41.0" },
 ]
 
 [[package]]
